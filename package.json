@@ -1,6 +1,6 @@
 {
   "name": "notification-management",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "notification management",
   "main": "notification.js",
   "scripts": {
@@ -20,6 +20,7 @@
   "license": "MIT",
   "dependencies": {
   	"axiom-utils": "*",
+  	"axiom-assert-helper": "*",
   	"node-database-executor": "*",
   	"template-management": "*",
   	"nodemailer": "*", 

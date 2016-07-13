@@ -2,7 +2,7 @@ var constant = require('./constant.js');
 var utils = require('axiom-utils');
 var debug = require('debug')('notification-management:notification-management');
 var queryExecutor = require('node-database-executor');
-var assert = require('assert-helper');
+var assert = require('axiom-assert-helper');
 var processNotification = require('./notification-process.js');
 var Inapp = require('./inapp.js');
 

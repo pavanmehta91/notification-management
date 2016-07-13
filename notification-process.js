@@ -1,13 +1,13 @@
 var debug = require('debug')('Mail:MailNotifications');
 var queryExecutor = require('node-database-executor');
-var usermodule = require('user-management');
+//var usermodule = require('user-management');
 var nodemailer = require('nodemailer');
 var sendMail = require('./sendMail.js');
 var Template = require('template-management');
 var sendSMS = require('./sendSMS.js');
 var constant = require('./constant.js');
 
-var dbConfig = GLOBAL._defaultDBConfig;
+//var dbConfig = GLOBAL._defaultDBConfig;
 
 var sendSuccess = 1;
 var sendFailed = 0;
