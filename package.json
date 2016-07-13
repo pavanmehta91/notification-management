@@ -1,0 +1,32 @@
+{
+  "name": "notification-management",
+  "version": "1.0.0",
+  "description": "notification management",
+  "main": "notification.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/darshit-shah/notification-management.git"
+  },
+  "keywords": [
+    "notification",
+    "push",
+    "sms",
+    "email"
+  ],
+  "author": "Darshit Shah",
+  "license": "MIT",
+  "dependencies": {
+  	"axiom-utils": "*",
+  	"node-database-executor": "*",
+  	"template-management": "*",
+  	"nodemailer": "*", 
+    "debug": "*"
+  },
+  "bugs": {
+    "url": "https://github.com/darshit-shah/notification-management/issues"
+  },
+  "homepage": "https://github.com/darshit-shah/notification-management#readme"
+}
