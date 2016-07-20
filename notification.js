@@ -167,7 +167,7 @@ function commonInsert(query, data, dbConfig, cb) {
 /*
     Creates a notification transaction
 
-    Sample transaction data
+    Sample transactionData
     [
         {
             'code': 'AOCRTD',
@@ -203,7 +203,7 @@ function insertNotificationTransactions(transactionData, dbConfig, cb) {
 }
 
 /*
-    Sample Request
+    Sample requestData 1
     {
         userId: <user_id>, (REQUIRED)
         status: READ | UNREAD | ALL, (Default: ALL),
@@ -212,7 +212,7 @@ function insertNotificationTransactions(transactionData, dbConfig, cb) {
         serverdatetime: <serverdatetime> (Default: '')
     }
 
-    Sample Response
+    Sample Response 1
     {
         status: true,
         content: [<n1>, ..., n],
@@ -220,7 +220,7 @@ function insertNotificationTransactions(transactionData, dbConfig, cb) {
         nextpage: <next_page_number>
     }
 
-    Sample Request 2
+    Sample requestData 2
     {
         userId: <user_id>,
         status: READ,
@@ -244,7 +244,7 @@ function insertNotificationTransactions(transactionData, dbConfig, cb) {
         }
     }
 */
-function getInappNotifications(requestData, connection, cb) {
+function getInappNotifications(requestData, dbConfig, cb) {
     var userId = requestData.userId;
     var status = 'ALL';
     var limit = -1;
@@ -252,8 +252,8 @@ function getInappNotifications(requestData, connection, cb) {
     var serverdatetime = '';
     var fromdate = '';
     var todate = '';
-
     var validStatus = ['ALL', 'READ', 'UNREAD'];
+
     if (requestData.hasOwnProperty('status')) {
         status = requestData.status.toUpperCase().trim();
         if (validStatus.indexOf(status) == -1) {
@@ -299,18 +299,18 @@ function getInappNotifications(requestData, connection, cb) {
         todate = requestData.todate;
     }
 
-    Inapp.getNotifications(userId, status, offset, limit, serverdatetime, fromdate, todate, function(inappResponse) {
+    Inapp.getNotifications(userId, status, offset, limit, serverdatetime, fromdate, todate, dbConfig, function(inappResponse) {
         cb(inappResponse);
     });
 }
 
 /*
-    Sample request
+    Sample requestData
     {
         notificationId: [<notification-id>]
     }
 */
-function markInappNotificationRead(requestData, connection, cb) {
+function markInappNotificationRead(requestData, dbConfig, cb) {
     if (assert.checkType(requestData, 'object') === false) {
         cb({
             status: false,
@@ -337,18 +337,18 @@ function markInappNotificationRead(requestData, connection, cb) {
     }
 
     var userId = requestData.userId;
-    Inapp.markRead(notificationId, userId, function(response) {
+    Inapp.markRead(notificationId, userId, dbConfig, function(response) {
         cb(response);
     });
 }
 
 /*
-    Sample request
+    Sample requestData
     {
         notificationId: [<notification-id>]
     }
 */
-function markInappNotificationUnread(requestData, connection, cb) {
+function markInappNotificationUnread(requestData, dbConfig, cb) {
     if (assert.checkType(requestData, 'object') === false) {
         cb({
             status: false,
@@ -375,13 +375,13 @@ function markInappNotificationUnread(requestData, connection, cb) {
     }
 
     var userId = requestData.userId;
-    Inapp.markUnread(notificationId, userId, function(response) {
+    Inapp.markUnread(notificationId, userId, dbConfig, function(response) {
         cb(response);
     });
 }
 
 /*
-    Sample Request
+    Sample requestData
     {
         userId: <user_id>, (REQUIRED)
         datetime: <datetime> (REQUIRED)
@@ -402,7 +402,7 @@ function markInappNotificationUnread(requestData, connection, cb) {
         }
     }
 */
-function getNewInappNotifications(requestData, connection, cb) {
+function getNewInappNotifications(requestData, dbConfig, cb) {
     var userId = requestData.userId;
     var datetime = '';
 
@@ -416,21 +416,19 @@ function getNewInappNotifications(requestData, connection, cb) {
 
     datetime = requestData.datetime;
 
-    Inapp.getNewNotifications(userId, datetime, function(inappResponse) {
+    Inapp.getNewNotifications(userId, datetime, dbConfig, function(inappResponse) {
         cb(inappResponse);
     });
 }
 
 module.exports = {
     createSchema: createSchema,
-    //getNotificationMasterId: getNotificationMasterId,
     insertNotificationTransactions: insertNotificationTransactions,
     getInappNotifications: getInappNotifications,
     markInappNotificationRead: markInappNotificationRead,
     markInappNotificationUnread: markInappNotificationUnread,
     getNewInappNotifications: getNewInappNotifications,
 
-    //ASHRAF
     sendNotifications: processNotification.sendNotifications,
     sendMail: processNotification.sendMail,
     mailConfig: processNotification.mailConfig,
