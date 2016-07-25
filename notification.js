@@ -5,6 +5,14 @@ var queryExecutor = require('node-database-executor');
 var assert = require('axiom-assert-helper');
 var processNotification = require('./notification-process.js');
 var Inapp = require('./inapp.js');
+var Template = require('template-management');
+
+var sendSuccess = 1;
+var sendFailed = 0;
+var inProcess = -1;
+var processSuccess = 1;
+var processFailed = 0;
+var userIdmismatch = 2;
 
 /*
     Creates required tables for using notification-management
@@ -148,6 +156,7 @@ function prepareTransactionData(transactionData, dbConfig, cb) {
 
 /*
     Creates a entry in tbl_NotificationTransaction
+    // Todo : update this to be configurable
 */
 function commonInsert(query, data, dbConfig, cb) {
     var dataValues = utils.JSON2ARRAY(data);
@@ -165,6 +174,90 @@ function commonInsert(query, data, dbConfig, cb) {
 }
 
 /*
+    Gets notification transaction by id
+    // Todo : update this to be configurable
+*/
+function getNotificationTransactionByID(id, dbConfig, cb) {
+    var notificationJson = {
+        join: {
+            table: 'tbl_NotificationMaster',
+            alias: 'NTM',
+            joinwith: [{
+                table: 'tbl_NotificationTransaction',
+                alias: 'NTT',
+                joincondition: {
+                    table: 'NTM',
+                    field: 'pk_id',
+                    operator: 'eq',
+                    value: {
+                        table: 'NTT',
+                        field: 'NT_fk_NM_id'
+                    }
+                }
+            }]
+        },
+        select: [{
+            table: 'NTM',
+            field: 'NM_code'
+        }, {
+            table: 'NTM',
+            field: 'NM_name'
+        }, {
+            table: 'NTM',
+            field: 'NM_sms_template'
+        }, {
+            table: 'NTM',
+            field: 'NM_email_template'
+        }, {
+            table: 'NTM',
+            field: 'NM_inapp_template'
+        }, {
+            table: 'NTM',
+            field: 'NM_push_template'
+        }, {
+            table: 'NTM',
+            field: 'NM_subject'
+        }, {
+            table: 'NTT',
+            field: 'pk_id'
+        }, {
+            table: 'NTT',
+            field: 'NT_data'
+        }, {
+            table: 'NTT',
+            field: 'NT_processed'
+        }, {
+            table: 'NTT',
+            field: 'NT_fk_User_ids'
+        }],
+        limit: 1,
+        filter: {
+            AND: [{
+                table: 'NTT',
+                field: 'NT_processed',
+                operator: 'EQ',
+                value: '0'
+            }, {
+                table: 'NTT',
+                field: 'pk_id',
+                operator: 'EQ',
+                value: id
+            }]
+        }
+    };
+
+    var requestData = {
+        query: notificationJson,
+        dbConfig: dbConfig
+    };
+
+    queryExecutor.executeQuery(requestData, function(data) {
+        debug('getNotificationTransactionByID executeQuery data: %s', JSON.stringify(data));;
+        cb(data);
+    });
+}
+
+/*
     Creates a notification transaction
 
     Sample transactionData
@@ -172,34 +265,222 @@ function commonInsert(query, data, dbConfig, cb) {
         {
             'code': 'AOCRTD',
             'data': '{}',
+            'userIds' : '1,2,3'
         }
     ]
 */
-function insertNotificationTransactions(transactionData, dbConfig, cb) {
-    prepareTransactionData(transactionData, dbConfig, function(preparedTransactionsData) {
-        if (preparedTransactionsData.status == true) {
-            debug('prepareTransactionData response: %s', JSON.stringify(preparedTransactionsData));
-            commonInsert(constant.queries.ntInsertQuery, preparedTransactionsData.content, dbConfig, function(data) {
-                debug('insertNotificationTransactions response: %s', JSON.stringify(data));
-                if (data.status == true) {
-                    cb({
-                        status: true,
-                        content: data.content
-                    });
-                } else {
-                    cb({
-                        status: false,
-                        content: data.error
-                    });
-                }
-            });
-        } else {
-            cb({
-                status: false,
-                content: preparedTransactionsData.error
-            });
-        }
-    });
+function insertNotificationTransactions(transactionData, userTableConfig, dbConfig, cb) {
+    if (transactionData[0].userIds && transactionData[0].userIds != null && transactionData[0].userIds != "") {
+        debug('userIds present: %s', JSON.stringify(transactionData));
+        prepareTransactionData(transactionData, dbConfig, function(preparedTransactionsData) {
+            if (preparedTransactionsData.status == true) {
+                debug('prepareTransactionData response: %s', JSON.stringify(preparedTransactionsData));
+                commonInsert(constant.queries.ntInsertQuery, preparedTransactionsData.content, dbConfig, function(data) {
+                    debug('insertNotificationTransactions response: %s', JSON.stringify(data));
+                    if (data.status == true) {
+                        getNotificationTransactionByID(data.content.insertId, dbConfig, function(notiData) {
+                            debug('getNotificationTransactionByID response: %s', JSON.stringify(notiData));
+                            if (notiData.status === false) {
+                                cb(notiData);
+                                return;
+                            } else if (notiData.content.length <= 0) {
+                                cb({
+                                    status: true,
+                                    content: {
+                                        notificationID: -1
+                                    }
+                                });
+                                return;
+                            } else {
+                                var notificationID = notiData.content[0]["pk_id"];
+                                var inappTemplate = notiData.content[0]["NM_inapp_template"];
+                                var pushTemplate = notiData.content[0]["NM_push_template"];
+                                var emailSubject = notiData.content[0]["NM_subject"];
+                                var emailTemplate = notiData.content[0]["NM_email_template"];
+                                var smsTemplate = notiData.content[0]["NM_sms_template"];
+
+                                var msgData = JSON.parse(notiData.content[0]["NT_data"]);
+                                var userArray = notiData.content[0]["NT_fk_User_ids"].split(',');
+
+                                if (userArray.length <= 0 || userArray == '') {
+                                    debug('userArray.length', userArray.length);
+                                    cb({
+                                        status: false,
+                                        content: preparedTransactionsData.error
+                                    });
+                                    return;
+                                }
+                                updateNotificationStatus(inProcess, notificationID, userTableConfig, dbConfig, function(ntStatusUpdate) {
+                                    debug('updateNotificationStatus response: %s', JSON.stringify(ntStatusUpdate));
+                                    if (ntStatusUpdate.status === false) {
+                                        debug(ntStatusUpdate);
+                                        cb(ntStatusUpdate);
+                                        return;
+                                    } else {
+                                        getUserDetails(userArray, userTableConfig, dbConfig, function(userData) {
+                                            debug('getUserDetails response: %s', JSON.stringify(userData));
+
+                                            if (userData.content.length <= 0) {
+                                                updateNotificationStatus(sendFailed, notificationID, userTableConfig, dbConfig, function() {
+                                                    debug('User not available');
+                                                    cb({
+                                                        status: true,
+                                                        content: {
+                                                            notificationID: -1
+                                                        }
+                                                    });
+                                                    return;
+                                                });
+                                            }
+
+                                            function processInapp(d, userTableConfig, dbConfig, callback) {
+                                                var inappTemplateToProcess = inappTemplate;
+
+                                                if (inappTemplateToProcess === undefined || inappTemplateToProcess === null || inappTemplateToProcess.trim().length === 0) {
+                                                    debug('inapp notification skipped...');
+                                                    callback();
+                                                    return;
+                                                }
+
+                                                debug('inapp notification template: ', inappTemplateToProcess);
+                                                var inappHtml = Template.toHtml(inappTemplateToProcess, msgData, '{{', '}}');
+                                                var inappData = {
+                                                    userId: d[userTableConfig.primaryKeyNameUserTable],
+                                                    notificationid: notificationID,
+                                                    html: inappHtml
+                                                };
+                                                debug('inapp notification data: ', inappData);
+                                                insertInappNotification(inappData, inProcess, userTableConfig, dbConfig, function(inappResult) {
+                                                    debug('inapp insert response: ', inappResult);
+                                                    callback();
+                                                    return;
+                                                });
+                                            }
+
+                                            function processPush(d, userTableConfig, dbConfig, callback) {
+                                                var pushTemplateToProcess = pushTemplate;
+
+                                                if (pushTemplateToProcess === undefined || pushTemplateToProcess === null || pushTemplateToProcess.trim().length === 0) {
+                                                    debug('push notification skipped...');
+                                                    callback();
+                                                    return;
+                                                }
+
+                                                debug('push notification template: ', pushTemplateToProcess);
+                                                var pushText = Template.toHtml(pushTemplateToProcess, msgData, '{{', '}}');
+                                                var pushData = {
+                                                    toPlayerId: d[userTableConfig.playerIDKeyNameUserMapping],
+                                                    notificationid: notificationID,
+                                                    text: pushText
+                                                };
+                                                debug('push notification data: ', pushData);
+                                                if (pushData.toPlayerId === undefined || pushData.toPlayerId === null || pushData.toPlayerId.trim().length === 0 || pushData.toPlayerId === 'undefined') {
+                                                    callback();
+                                                    return;
+                                                } else {
+                                                    insertPushNotification(pushData, inProcess, userTableConfig, dbConfig, function(pushResult) {
+                                                        debug('push insert response: ', pushResult);
+                                                        callback();
+                                                        return;
+                                                    });
+                                                }
+
+                                            }
+
+                                            function processEmail(d, userTableConfig, dbConfig, callback) {
+                                                var emailTemplateToProcess = emailTemplate;
+                                                var emailSubjectToProcess = emailSubject;
+
+                                                if (emailTemplateToProcess === undefined || emailTemplateToProcess === null || emailTemplateToProcess.trim().length === 0) {
+                                                    debug('email notification skipped...');
+                                                    callback();
+                                                    return;
+                                                }
+
+                                                var mailhtml = Template.toHtml(emailTemplateToProcess, msgData, '{{', '}}');
+
+                                                var maildata = {
+                                                    mailfrom: userTableConfig.mailFromAddress,
+                                                    mailto: d["email"],
+                                                    mailsubject: emailSubjectToProcess,
+                                                    mailhtml: mailhtml,
+                                                    notificationid: notificationID
+                                                }
+
+                                                insertMailNotification(maildata, inProcess, userTableConfig, dbConfig, function(result) {
+                                                    callback();
+                                                });
+                                            }
+
+                                            function processNotification(d, userTableConfig, dbConfig, callback) {
+                                                debug("email", d["email"])
+                                                processInapp(d, userTableConfig, dbConfig, function(inappResponse) {
+                                                    processPush(d, userTableConfig, dbConfig, function(pushResponse) {
+                                                        processEmail(d, userTableConfig, dbConfig, function(emailResponse) {
+                                                            //processSMS(d, function(smsResponse) {
+                                                            callback();
+                                                            return;
+                                                            //});
+                                                        });
+                                                    });
+                                                });
+                                            }
+
+                                            processUser(0, userTableConfig, dbConfig);
+
+                                            function processUser(index, userTableConfig, dbConfig) {
+                                                debug('userData.content.length: ', userData.content.length);
+                                                debug('index: ', index);
+                                                if (index >= userData.content.length) {
+                                                    updateNotificationStatus(processSuccess, notificationID, userTableConfig, dbConfig, function() {
+                                                        cb({
+                                                            status: true,
+                                                            content: {
+                                                                notificationID: notificationID
+                                                            }
+                                                        });
+                                                        return;
+                                                    });
+                                                }
+                                                processNotification(userData.content[index], userTableConfig, dbConfig, function() {
+                                                    debug('userData.content.length 0: ', userData.content.length);
+                                                    debug('index 0: ', index);
+                                                    processUser(index + 1, userTableConfig, dbConfig);
+                                                });
+                                            }
+
+                                        });
+                                    }
+                                });
+
+                            }
+                        });
+
+                        // cb({
+                        //     status: true,
+                        //     content: data.content
+                        // });
+                    } else {
+                        cb({
+                            status: false,
+                            content: data.error
+                        });
+                    }
+                });
+            } else {
+                cb({
+                    status: false,
+                    content: preparedTransactionsData.error
+                });
+            }
+        });
+    } else {
+        debug('no userIds present: %s', JSON.stringify(transactionData));
+        cb({
+            status: false,
+            error: constant.status['NM_ERR_INVALID_USERIDS']
+        });
+    }
 }
 
 /*
@@ -421,6 +702,163 @@ function getNewInappNotifications(requestData, dbConfig, cb) {
     });
 }
 
+/*
+    Gets user details for specified userArray
+*/
+function getUserDetails(userArray, userTableConfig, dbConfig, cb) {
+    var jsonQuery = {
+        join: {
+            table: userTableConfig.userTableName,
+            alias: userTableConfig.userTableAlias,
+            joinwith: [{
+                table: userTableConfig.userMappingTableName,
+                alias: userTableConfig.userMappingTableAlias,
+                joincondition: {
+                    table: userTableConfig.userTableAlias,
+                    field: userTableConfig.primaryKeyNameUserTable,
+                    operator: 'eq',
+                    value: {
+                        table: userTableConfig.userMappingTableAlias,
+                        field: userTableConfig.userIDKeyNameUserMapping
+                    }
+                }
+            }]
+        },
+        select: [{
+            table: userTableConfig.userTableAlias,
+            field: userTableConfig.primaryKeyNameUserTable
+        }, {
+            table: userTableConfig.userTableAlias,
+            field: userTableConfig.emailKeyNameUserTable
+        }, {
+            table: userTableConfig.userTableAlias,
+            field: userTableConfig.mobileKeyNameUserTable
+        }, {
+            table: userTableConfig.userTableAlias,
+            field: userTableConfig.firstNameUserTable
+        }, {
+            table: userTableConfig.userTableAlias,
+            field: userTableConfig.lastNameUserTable
+        }, {
+            table: userTableConfig.userMappingTableAlias,
+            field: userTableConfig.playerIDKeyNameUserMapping,
+        }],
+        filter: {
+            AND: [{
+                table: userTableConfig.userTableAlias,
+                field: userTableConfig.primaryKeyNameUserTable,
+                operator: 'EQ',
+                value: userArray
+            }]
+        }
+    };
+
+    var requestData = {
+        query: jsonQuery,
+        dbConfig: dbConfig
+    };
+
+    debug('getUserDetails notificationJson: %s', JSON.stringify(jsonQuery));
+    debug('getUserDetails dbConfig: %s', JSON.stringify(dbConfig));
+    debug('getUserDetails requestData: %s', JSON.stringify(requestData));
+
+    queryExecutor.executeQuery(requestData, function(data) {
+        debug('getUserDetails executeQuery: %s', JSON.stringify(data));
+        cb(data);
+    });
+}
+
+/*
+    Inserts an inapp notification
+*/
+function insertInappNotification(data, inStatus, userTableConfig, dbConfig, cb) {
+    var query = {
+        table: userTableConfig.inAppNotificationTableName,
+        insert: {
+            field: userTableConfig.inAppNotificationTableFieldArray,
+            fValue: [data.userId, data.html, inStatus, data.notificationid]
+        }
+    };
+    var requestData = {
+        query: query,
+        dbConfig: dbConfig
+    };
+    queryExecutor.executeQuery(requestData, function(data) {
+        // data = correctResponse(data);
+        cb(data);
+    });
+}
+
+/*
+    Inserts a push notification
+*/
+function insertPushNotification(data, pnStatus, userTableConfig, dbConfig, cb) {
+    var query = {
+        table: userTableConfig.pushNotificationTableName,
+        insert: {
+            field: userTableConfig.pushNotificationTableFieldArray,
+            fValue: [data.toPlayerId, data.text, pnStatus, data.notificationid]
+        }
+    };
+    var requestData = {
+        query: query,
+        dbConfig: dbConfig
+    };
+    queryExecutor.executeQuery(requestData, function(data) {
+        // data = correctResponse(data);
+        cb(data);
+    });
+}
+
+/*
+    Inserts an email notification
+*/
+function insertMailNotification(data, mnStatus, userTableConfig, dbConfig, cb) {
+    var query = {
+        table: userTableConfig.mailNotificationTableName,
+        insert: {
+            field: userTableConfig.mailNotificationTableFieldArray,
+            fValue: [data.mailfrom, data.mailto, data.mailsubject, data.mailhtml, mnStatus, data.notificationid]
+        }
+    };
+    var requestData = {
+        query: query,
+        dbConfig: dbConfig
+    };
+    queryExecutor.executeQuery(requestData, function(data) {
+        // data = correctResponse(data);
+        cb(data);
+    });
+}
+
+/*
+    Updates notification transaction status
+*/
+function updateNotificationStatus(processStatus, pkId, userTableConfig, dbConfig, cb) {
+    var udpateStatus = {
+        table: userTableConfig.notificationTransactionTableName,
+        update: [{
+            field: userTableConfig.processedKeynotificationTransaction,
+            fValue: '' + processStatus + ''
+        }],
+        filter: {
+            AND: [{
+                field: userTableConfig.primaryKeyNotificationTransaction,
+                operator: 'EQ',
+                value: '' + pkId + ''
+            }]
+        }
+    };
+    var updateRequestData = {
+        query: udpateStatus,
+        dbConfig: dbConfig
+    };
+    queryExecutor.executeQuery(updateRequestData, function(data) {
+        // data = correctResponse(data);
+        cb(data);
+    });
+}
+
 module.exports = {
     createSchema: createSchema,
     insertNotificationTransactions: insertNotificationTransactions,
@@ -428,6 +866,9 @@ module.exports = {
     markInappNotificationRead: markInappNotificationRead,
     markInappNotificationUnread: markInappNotificationUnread,
     getNewInappNotifications: getNewInappNotifications,
+
+    updateNotificationStatus: updateNotificationStatus,
+    insertInappNotification: insertInappNotification,
 
     sendNotifications: processNotification.sendNotifications,
     sendMail: processNotification.sendMail,

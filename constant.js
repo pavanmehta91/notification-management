@@ -87,6 +87,10 @@ var status = {
         code: 20031,
         message: '"datetime" is required field'
     },
+    'NM_ERR_INVALID_USERIDS': {
+        code: 20032,
+        message: '"userIds" is required field'
+    },
 }
 
 // module.exports = {

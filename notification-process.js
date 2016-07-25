@@ -16,10 +16,6 @@ var processSuccess = 1;
 var processFailed = 0;
 var userIdmismatch = 2;
 
-// sendNotifications(function(vres) {
-//   console.log(vres);
-// });
-
 function sendNotifications(cb) {
   getNotifications(function(notiData) {
     if (notiData.status === false) {
@@ -233,26 +229,25 @@ function insertSMSNotification(data, smsStatus, cb) {
   });
 }
 
-function insertInappNotification(data, inStatus, cb) {
-  var query = {
-    table: "tbl_InappNotification",
-    insert: {
-      field: ['IN_userId', 'IN_html', 'IN_status', 'IN_fk_NT_id'],
-      fValue: [data.userId, data.html, inStatus, data.notificationid]
-    }
-  };
-  var requestData = {
-    query: query,
-    dbConfig: dbConfig
-  };
-  var connection = '';
-  queryExecutor.executeQuery(requestData, connection, function(data) {
-    // data = correctResponse(data);
-    cb(data);
-  });
-}
+// function insertInappNotification(data, inStatus, userTableConfig, dbConfig, cb) {
+//   var query = {
+//     table: userTableConfig.inAppNotificationTableName,
+//     insert: {
+//       field: userTableConfig.inAppNotificationTableFieldArray,
+//       fValue: [data.userId, data.html, inStatus, data.notificationid]
+//     }
+//   };
+//   var requestData = {
+//     query: query,
+//     dbConfig: dbConfig
+//   };
+//   queryExecutor.executeQuery(requestData, function(data) {
+//     // data = correctResponse(data);
+//     cb(data);
+//   });
+// }
 
-function updateNotificationStatus(processStatus, pkId, cb) {
+function updateNotificationStatus(processStatus, pkId, dbConfig, cb) {
   var udpateStatus = {
     table: "tbl_NotificationTransaction",
     update: [{
@@ -271,8 +266,7 @@ function updateNotificationStatus(processStatus, pkId, cb) {
     query: udpateStatus,
     dbConfig: dbConfig
   };
-  var connection = '';
-  queryExecutor.executeQuery(updateRequestData, connection, function(data) {
+  queryExecutor.executeQuery(updateRequestData, function(data) {
     // data = correctResponse(data);
     cb(data);
   });
@@ -369,6 +363,8 @@ function getNotifications(cb) {
 
 module.exports = {
   sendNotifications: sendNotifications,
+  updateNotificationStatus: updateNotificationStatus,
+  //insertInappNotification: insertInappNotification,
   sendMail: sendMail.sendMail,
   mailConfig: sendMail.mailConfig,
   sendSMS: sendSMS.sendSMS,
