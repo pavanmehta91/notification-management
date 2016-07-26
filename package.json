@@ -24,7 +24,8 @@
   	"node-database-executor": "*",
   	"template-management": "*",
   	"nodemailer": "*", 
-    "debug": "*"
+    "debug": "*",
+    "request": "*"
   },
   "bugs": {
     "url": "https://github.com/darshit-shah/notification-management/issues"

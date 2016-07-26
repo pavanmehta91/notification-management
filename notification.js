@@ -302,6 +302,8 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                 var msgData = JSON.parse(notiData.content[0]["NT_data"]);
                                 var userArray = notiData.content[0]["NT_fk_User_ids"].split(',');
 
+                                debug('==========userArray==========: %s', JSON.stringify(userArray));
+
                                 if (userArray.length <= 0 || userArray == '') {
                                     debug('userArray.length', userArray.length);
                                     cb({
@@ -319,6 +321,35 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                     } else {
                                         getUserDetails(userArray, userTableConfig, dbConfig, function(userData) {
                                             debug('getUserDetails response: %s', JSON.stringify(userData));
+
+                                            var processedUserData = [];
+
+                                            userData.content.forEach(function(selectedUserData) {
+                                                userArray.forEach(function(selectedUserID) {
+                                                    if (selectedUserID == selectedUserData.pk_UserID) {
+                                                        var is_present = 0;
+                                                        processedUserData.forEach(function(selectedProcessedUserData) {
+                                                            if (selectedUserID == selectedProcessedUserData.pk_UserID) {
+                                                                is_present = 1;
+                                                                selectedProcessedUserData.playerIDs.push(selectedUserData.playerID);
+                                                            }
+                                                        });
+                                                        if (is_present == 0) {
+                                                            var processedUserDataObject = {};
+                                                            processedUserDataObject.pk_UserID = selectedUserData.pk_UserID;
+                                                            processedUserDataObject.email = selectedUserData.email;
+                                                            processedUserDataObject.phone = selectedUserData.phone;
+                                                            processedUserDataObject.firstName = selectedUserData.firstName;
+                                                            processedUserDataObject.lastName = selectedUserData.lastName;
+                                                            processedUserDataObject.playerIDs = [];
+                                                            processedUserDataObject.playerIDs.push(selectedUserData.playerID);
+                                                            processedUserData.push(processedUserDataObject);
+                                                        }
+                                                    }
+                                                });
+                                            });
+
+                                            debug('processedUserData array: %s', JSON.stringify(processedUserData));
 
                                             if (userData.content.length <= 0) {
                                                 updateNotificationStatus(sendFailed, notificationID, userTableConfig, dbConfig, function() {
@@ -360,6 +391,8 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                             function processPush(d, userTableConfig, dbConfig, callback) {
                                                 var pushTemplateToProcess = pushTemplate;
 
+                                                debug('d: %s', JSON.stringify(d));
+
                                                 if (pushTemplateToProcess === undefined || pushTemplateToProcess === null || pushTemplateToProcess.trim().length === 0) {
                                                     debug('push notification skipped...');
                                                     callback();
@@ -368,17 +401,24 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
 
                                                 debug('push notification template: ', pushTemplateToProcess);
                                                 var pushText = Template.toHtml(pushTemplateToProcess, msgData, '{{', '}}');
-                                                var pushData = {
-                                                    toPlayerId: d[userTableConfig.playerIDKeyNameUserMapping],
-                                                    notificationid: notificationID,
-                                                    text: pushText
-                                                };
+                                                var pushData = [];
+                                                d["playerIDs"].forEach(function(userPlayerID) {
+                                                    if (userPlayerID && userPlayerID !== "" && userPlayerID !== undefined && userPlayerID !== 'undefined') {
+                                                        var tempArray = [];
+                                                        tempArray.push(userPlayerID);
+                                                        tempArray.push(pushText);
+                                                        tempArray.push(inProcess);
+                                                        tempArray.push(notificationID);
+                                                        pushData.push(tempArray);
+                                                    }
+                                                });
+
                                                 debug('push notification data: ', pushData);
-                                                if (pushData.toPlayerId === undefined || pushData.toPlayerId === null || pushData.toPlayerId.trim().length === 0 || pushData.toPlayerId === 'undefined') {
+                                                if (pushData.length <= 0) {
                                                     callback();
                                                     return;
                                                 } else {
-                                                    insertPushNotification(pushData, inProcess, userTableConfig, dbConfig, function(pushResult) {
+                                                    insertPushNotification(pushData, userTableConfig, dbConfig, function(pushResult) {
                                                         debug('push insert response: ', pushResult);
                                                         callback();
                                                         return;
@@ -429,9 +469,9 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                             processUser(0, userTableConfig, dbConfig);
 
                                             function processUser(index, userTableConfig, dbConfig) {
-                                                debug('userData.content.length: ', userData.content.length);
+                                                debug('processedUserData.length: ', processedUserData.length);
                                                 debug('index: ', index);
-                                                if (index >= userData.content.length) {
+                                                if (index >= processedUserData.length) {
                                                     updateNotificationStatus(processSuccess, notificationID, userTableConfig, dbConfig, function() {
                                                         cb({
                                                             status: true,
@@ -442,8 +482,8 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                         return;
                                                     });
                                                 }
-                                                processNotification(userData.content[index], userTableConfig, dbConfig, function() {
-                                                    debug('userData.content.length 0: ', userData.content.length);
+                                                processNotification(processedUserData[index], userTableConfig, dbConfig, function() {
+                                                    debug('processedUserData.length 0: ', processedUserData.length);
                                                     debug('index 0: ', index);
                                                     processUser(index + 1, userTableConfig, dbConfig);
                                                 });
@@ -792,12 +832,12 @@ function insertInappNotification(data, inStatus, userTableConfig, dbConfig, cb) 
 /*
     Inserts a push notification
 */
-function insertPushNotification(data, pnStatus, userTableConfig, dbConfig, cb) {
+function insertPushNotification(data, userTableConfig, dbConfig, cb) {
     var query = {
         table: userTableConfig.pushNotificationTableName,
         insert: {
             field: userTableConfig.pushNotificationTableFieldArray,
-            fValue: [data.toPlayerId, data.text, pnStatus, data.notificationid]
+            fValue: data
         }
     };
     var requestData = {
@@ -866,13 +906,13 @@ module.exports = {
     markInappNotificationRead: markInappNotificationRead,
     markInappNotificationUnread: markInappNotificationUnread,
     getNewInappNotifications: getNewInappNotifications,
-
     updateNotificationStatus: updateNotificationStatus,
-    insertInappNotification: insertInappNotification,
-
-    sendNotifications: processNotification.sendNotifications,
-    sendMail: processNotification.sendMail,
-    mailConfig: processNotification.mailConfig,
-    sendSMS: processNotification.sendSMS,
-    smsConfig: processNotification.smsConfig
+    sendPushNotifications: processNotification.sendPushNotifications,
+    sendMailNotifications: processNotification.sendMailNotifications,
+    // insertInappNotification: insertInappNotification,
+    // sendNotifications: processNotification.sendNotifications,
+    // sendMail: processNotification.sendMail,
+    // mailConfig: processNotification.mailConfig,
+    // sendSMS: processNotification.sendSMS,
+    // smsConfig: processNotification.smsConfig
 }
