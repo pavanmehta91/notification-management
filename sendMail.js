@@ -22,19 +22,29 @@ function sendMail(ToAddress, Subject, replyTo, htmlData, mailConfig, callback) {
         //text: "Hello world", // plaintext body
         html: htmlData // html body
     }
-    transport.sendMail(mailOptions, function(err, responseStatus) {
-        if (err) {
-            callback({
-                status: false,
-                error: err
-            });
-        } else {
-            callback({
-                status: true,
-                data: responseStatus
-            });
-        }
-    });
+
+    try {
+        transport.sendMail(mailOptions, function(err, responseStatus) {
+            if (err) {
+                callback({
+                    status: false,
+                    error: err
+                });
+            } else {
+                callback({
+                    status: true,
+                    data: responseStatus
+                });
+            }
+        });
+    } catch (ex) {
+        callback({
+            status: false,
+            error: ex
+        });
+    }
+
+
 }
 
 module.exports = {

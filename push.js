@@ -5,14 +5,21 @@ var request = require('request');
     Actually sends onesignal push notification
 */
 function sendPush(pushObject, cb) {
-    request.post(pushObject, function(err, httpResponse, body) {
+    try {
+        request.post(pushObject, function(err, httpResponse, body) {
 
-        cb({
-        	error: err,
-        	httpResponse: httpResponse,
-        	body: body
+            cb({
+                error: err,
+                httpResponse: httpResponse,
+                body: body
+            });
         });
-    });
+    } catch (ex) {
+        cb({
+            status: false,
+            error: ex
+        });
+    }
 }
 
 module.exports = {

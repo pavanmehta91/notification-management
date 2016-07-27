@@ -13,6 +13,7 @@ var inProcess = -1;
 var processSuccess = 1;
 var processFailed = 0;
 var userIdmismatch = 2;
+var inappUnread = 0;
 
 /*
     Creates required tables for using notification-management
@@ -263,9 +264,9 @@ function getNotificationTransactionByID(id, dbConfig, cb) {
     Sample transactionData
     [
         {
-            'code': 'AOCRTD',
-            'data': '{}',
-            'userIds' : '1,2,3'
+            'code': 'TESTNM',
+            'data': '{"no":"2","push_target":"https://www.byteprophecy.com"}',
+            'userIds': 'contact@byteprophecy.com,work@byteprophecy.com'
         }
     ]
 */
@@ -322,14 +323,27 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                         getUserDetails(userArray, userTableConfig, dbConfig, function(userData) {
                                             debug('getUserDetails response: %s', JSON.stringify(userData));
 
+                                            if (userData.content.length <= 0) {
+                                                updateNotificationStatus(sendFailed, notificationID, userTableConfig, dbConfig, function() {
+                                                    debug('User not available');
+                                                    cb({
+                                                        status: true,
+                                                        content: {
+                                                            notificationID: -1
+                                                        }
+                                                    });
+                                                    return;
+                                                });
+                                            }
+
                                             var processedUserData = [];
 
                                             userData.content.forEach(function(selectedUserData) {
                                                 userArray.forEach(function(selectedUserID) {
-                                                    if (selectedUserID == selectedUserData.pk_UserID) {
+                                                    if (selectedUserID == selectedUserData[userTableConfig.emailKeyNameUserTable]) {
                                                         var is_present = 0;
                                                         processedUserData.forEach(function(selectedProcessedUserData) {
-                                                            if (selectedUserID == selectedProcessedUserData.pk_UserID) {
+                                                            if (selectedUserID == selectedProcessedUserData[userTableConfig.emailKeyNameUserTable]) {
                                                                 is_present = 1;
                                                                 selectedProcessedUserData.playerIDs.push(selectedUserData.playerID);
                                                             }
@@ -351,19 +365,6 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
 
                                             debug('processedUserData array: %s', JSON.stringify(processedUserData));
 
-                                            if (userData.content.length <= 0) {
-                                                updateNotificationStatus(sendFailed, notificationID, userTableConfig, dbConfig, function() {
-                                                    debug('User not available');
-                                                    cb({
-                                                        status: true,
-                                                        content: {
-                                                            notificationID: -1
-                                                        }
-                                                    });
-                                                    return;
-                                                });
-                                            }
-
                                             function processInapp(d, userTableConfig, dbConfig, callback) {
                                                 var inappTemplateToProcess = inappTemplate;
 
@@ -381,7 +382,7 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                     html: inappHtml
                                                 };
                                                 debug('inapp notification data: ', inappData);
-                                                insertInappNotification(inappData, inProcess, userTableConfig, dbConfig, function(inappResult) {
+                                                insertInappNotification(inappData, inappUnread, userTableConfig, dbConfig, function(inappResult) {
                                                     debug('inapp insert response: ', inappResult);
                                                     callback();
                                                     return;
@@ -409,6 +410,11 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                         tempArray.push(pushText);
                                                         tempArray.push(inProcess);
                                                         tempArray.push(notificationID);
+                                                        if (msgData.push_target && msgData.push_target !== "" && msgData.push_target !== undefined && msgData.push_target !== 'undefined') {
+                                                            tempArray.push(msgData.push_target);
+                                                        } else {
+                                                            tempArray.push("");
+                                                        }
                                                         pushData.push(tempArray);
                                                     }
                                                 });
@@ -424,7 +430,6 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                         return;
                                                     });
                                                 }
-
                                             }
 
                                             function processEmail(d, userTableConfig, dbConfig, callback) {
@@ -786,7 +791,7 @@ function getUserDetails(userArray, userTableConfig, dbConfig, cb) {
         filter: {
             AND: [{
                 table: userTableConfig.userTableAlias,
-                field: userTableConfig.primaryKeyNameUserTable,
+                field: userTableConfig.emailKeyNameUserTable,
                 operator: 'EQ',
                 value: userArray
             }]
@@ -900,7 +905,7 @@ function updateNotificationStatus(processStatus, pkId, userTableConfig, dbConfig
 }
 
 module.exports = {
-    createSchema: createSchema,
+    // createSchema: createSchema,
     insertNotificationTransactions: insertNotificationTransactions,
     getInappNotifications: getInappNotifications,
     markInappNotificationRead: markInappNotificationRead,
@@ -909,6 +914,8 @@ module.exports = {
     updateNotificationStatus: updateNotificationStatus,
     sendPushNotifications: processNotification.sendPushNotifications,
     sendMailNotifications: processNotification.sendMailNotifications,
+    resetPushNotificationStatus: processNotification.resetPushNotificationStatus,
+    resetMailNotificationStatus: processNotification.resetMailNotificationStatus,
     // insertInappNotification: insertInappNotification,
     // sendNotifications: processNotification.sendNotifications,
     // sendMail: processNotification.sendMail,

@@ -371,6 +371,33 @@ var mailSendSucceeded = 2; // (here to be deleted instead of success status)
 // }
 
 /*
+    Resets status for push notifications, sets to not processed for the ones in process (to 0 from -1)
+*/
+function resetPushNotificationStatus(userTableConfig, dbConfig, cb) {
+    var udpateStatus = {
+        table: userTableConfig.pushNotificationTableName,
+        update: [{
+            field: userTableConfig.statusKeyPushNotification,
+            fValue: '' + pushNotProcessed + ''
+        }],
+        filter: {
+            AND: [{
+                field: userTableConfig.statusKeyPushNotification,
+                operator: 'EQ',
+                value: '' + pushInProcess + ''
+            }]
+        }
+    };
+    var updateRequestData = {
+        query: udpateStatus,
+        dbConfig: dbConfig
+    };
+    queryExecutor.executeQuery(updateRequestData, function(data) {
+        cb(data);
+    });
+}
+
+/*
     Process for sending push notifications one by one using onesignal service
 */
 function sendPushNotifications(userTableConfig, dbConfig, pushConfig, cb) {
@@ -421,7 +448,9 @@ function sendPushNotifications(userTableConfig, dbConfig, pushConfig, cb) {
 
                         var pushObject = utils.extend(true,{},pushConfig);
                         debug('osPush.sendPush pushObject: %s', JSON.stringify(pushObject));
-                        pushObject.body.url += "";
+                        if (d[userTableConfig.targetKeyPushNotification] && d[userTableConfig.targetKeyPushNotification] !== "" && d[userTableConfig.targetKeyPushNotification] !== undefined && d[userTableConfig.targetKeyPushNotification] !== 'undefined' && d[userTableConfig.targetKeyPushNotification] !== null) {
+                            pushObject.body.url = d[userTableConfig.targetKeyPushNotification];
+                        }                        
                         pushObject.body.headings.en = "MonitorFirst";
                         pushObject.body.contents.en = d[userTableConfig.pushTextKeyPushNotification];
                         pushObject.body.include_player_ids.push(d[userTableConfig.playerIDKeyPushNotification]);
@@ -567,6 +596,33 @@ function deletePushNotification(pkId, userTableConfig, dbConfig, cb) {
 }
 
 /*
+    Resets status for mail notifications, sets to not processed for the ones in process (to 0 from -1)
+*/
+function resetMailNotificationStatus(userTableConfig, dbConfig, cb) {
+    var udpateStatus = {
+        table: userTableConfig.mailNotificationTableName,
+        update: [{
+            field: userTableConfig.statusKeyMailNotification,
+            fValue: '' + mailNotProcessed + ''
+        }],
+        filter: {
+            AND: [{
+                field: userTableConfig.statusKeyMailNotification,
+                operator: 'EQ',
+                value: '' + mailInProcess + ''
+            }]
+        }
+    };
+    var updateRequestData = {
+        query: udpateStatus,
+        dbConfig: dbConfig
+    };
+    queryExecutor.executeQuery(updateRequestData, function(data) {
+        cb(data);
+    });
+}
+
+/*
     Process for sending mail notifications one by one using gmail service
 */
 function sendMailNotifications(userTableConfig, dbConfig, mailConfig, cb) {
@@ -632,7 +688,7 @@ function sendMailNotifications(userTableConfig, dbConfig, mailConfig, cb) {
                                     cb({
                                         status: true,
                                         content: {
-                                            notificationID: response.body.id
+                                            notificationID: response.data.messageId
                                         }
                                     });
                                     return;
@@ -763,6 +819,8 @@ function deleteMailNotification(pkId, userTableConfig, dbConfig, cb) {
 module.exports = {
     sendPushNotifications: sendPushNotifications,
     sendMailNotifications: sendMailNotifications,
+    resetPushNotificationStatus: resetPushNotificationStatus,
+    resetMailNotificationStatus: resetMailNotificationStatus,
     // updateNotificationStatus: updateNotificationStatus,
     // insertInappNotification: insertInappNotification,
     // sendMail: sendMail.sendMail,
