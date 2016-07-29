@@ -131,7 +131,7 @@ function getNotifications(userId, status, offset, limit, serverdatetime, fromdat
         dbConfig: dbConfig
     };
 
-    queryExecutor.executeQuery(queryRequestData, {}, function(queryResponse) {
+    queryExecutor.executeQuery(queryRequestData, function(queryResponse) {
         var queryResponse = IncorrectResponse(queryResponse);
         if (queryResponse.success === false) {
             cb({
@@ -222,7 +222,7 @@ function updateNotificationStatus(notificationId, userId, status, dbConfig, cb) 
         dbConfig: dbConfig
     };
 
-    queryExecutor.executeQuery(queryRequestData, {}, function(queryResponse) {
+    queryExecutor.executeQuery(queryRequestData, function(queryResponse) {
         var queryResponse = IncorrectResponse(queryResponse);
         if (queryResponse.success === false) {
             cb({
@@ -300,8 +300,8 @@ function getNewNotifications(userId, datetime, dbConfig, cb) {
         query: query,
         dbConfig: dbConfig
     };
-    
-    queryExecutor.executeQuery(queryRequestData, {}, function(queryResponse) {
+
+    queryExecutor.executeQuery(queryRequestData, function(queryResponse) {
         var queryResponse = IncorrectResponse(queryResponse);
         if (queryResponse.success === false) {
             cb({
