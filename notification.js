@@ -495,6 +495,7 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                         });
                                                         return;
                                                     });
+                                                    return;
                                                 }
                                                 processNotification(processedUserData[index], userTableConfig, dbConfig, function() {
                                                     debug('processedUserData.length 0: ', processedUserData.length);
