@@ -300,7 +300,11 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                 var emailTemplate = notiData.content[0]["NM_email_template"];
                                 var smsTemplate = notiData.content[0]["NM_sms_template"];
 
-                                var msgData = JSON.parse(notiData.content[0]["NT_data"]);
+                                debug('msgData.parse');
+                                debug('msgData.parse', notiData.content[0]["NT_data"]);
+                                debug('msgData.parse');
+
+                                var msgData = JSON.parse(''+notiData.content[0]["NT_data"]);
                                 var userArray = notiData.content[0]["NT_fk_User_ids"].split(',');
 
                                 debug('==========userArray==========: %s', JSON.stringify(userArray));
@@ -345,7 +349,10 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                         processedUserData.forEach(function(selectedProcessedUserData) {
                                                             if (selectedUserID == selectedProcessedUserData[userTableConfig.emailKeyNameUserTable]) {
                                                                 is_present = 1;
-                                                                selectedProcessedUserData.playerIDs.push(selectedUserData.playerID);
+
+                                                                if (selectedProcessedUserData.playerIDs.indexOf(selectedUserData.playerID) < 0) {
+                                                                    selectedProcessedUserData.playerIDs.push(selectedUserData.playerID);
+                                                                }               
                                                             }
                                                         });
                                                         if (is_present == 0) {
@@ -407,6 +414,7 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                     if (userPlayerID && userPlayerID !== "" && userPlayerID !== undefined && userPlayerID !== 'undefined') {
                                                         var tempArray = [];
                                                         tempArray.push(userPlayerID);
+                                                        tempArray.push(d[userTableConfig.primaryKeyNameUserTable]);
                                                         tempArray.push(pushText);
                                                         tempArray.push(inProcess);
                                                         tempArray.push(notificationID);
@@ -443,6 +451,7 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                 }
 
                                                 var mailhtml = Template.toHtml(emailTemplateToProcess, msgData, '{{', '}}');
+                                                emailSubjectToProcess = Template.toHtml(emailSubjectToProcess, msgData, '{{', '}}');
 
                                                 var maildata = {
                                                     mailfrom: userTableConfig.mailFromAddress,
@@ -916,6 +925,7 @@ module.exports = {
     sendMailNotifications: processNotification.sendMailNotifications,
     resetPushNotificationStatus: processNotification.resetPushNotificationStatus,
     resetMailNotificationStatus: processNotification.resetMailNotificationStatus,
+    
     // insertInappNotification: insertInappNotification,
     // sendNotifications: processNotification.sendNotifications,
     // sendMail: processNotification.sendMail,

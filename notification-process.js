@@ -374,457 +374,588 @@ var mailSendSucceeded = 2; // (here to be deleted instead of success status)
     Resets status for push notifications, sets to not processed for the ones in process (to 0 from -1)
 */
 function resetPushNotificationStatus(userTableConfig, dbConfig, cb) {
-    var udpateStatus = {
-        table: userTableConfig.pushNotificationTableName,
-        update: [{
-            field: userTableConfig.statusKeyPushNotification,
-            fValue: '' + pushNotProcessed + ''
-        }],
-        filter: {
-            AND: [{
-                field: userTableConfig.statusKeyPushNotification,
-                operator: 'EQ',
-                value: '' + pushInProcess + ''
-            }]
-        }
-    };
-    var updateRequestData = {
-        query: udpateStatus,
-        dbConfig: dbConfig
-    };
-    queryExecutor.executeQuery(updateRequestData, function(data) {
-        cb(data);
-    });
+  var udpateStatus = {
+    table: userTableConfig.pushNotificationTableName,
+    update: [{
+      field: userTableConfig.statusKeyPushNotification,
+      fValue: '' + pushNotProcessed + ''
+    }],
+    filter: {
+      AND: [{
+        field: userTableConfig.statusKeyPushNotification,
+        operator: 'EQ',
+        value: '' + pushInProcess + ''
+      }]
+    }
+  };
+  var updateRequestData = {
+    query: udpateStatus,
+    dbConfig: dbConfig
+  };
+  queryExecutor.executeQuery(updateRequestData, function(data) {
+    cb(data);
+  });
 }
 
 /*
     Process for sending push notifications one by one using onesignal service
 */
 function sendPushNotifications(userTableConfig, dbConfig, pushConfig, cb) {
-    getPushNotifications(userTableConfig, dbConfig, function(notiData) {
-        if (notiData.status === false) {
-            debug(notiData);
-            cb(notiData);
-            return;
+  getPushNotifications(userTableConfig, dbConfig, function(notiData) {
+    if (notiData.status === false) {
+      debug(notiData);
+      cb(notiData);
+      return;
+    }
+    if (notiData.content.length <= 0) {
+      debug('Push notification data not available.');
+      cb({
+        status: true,
+        content: {
+          notificationID: -1
         }
-        if (notiData.content.length <= 0) {
-            debug('Notification data not available.');
-            cb({
-                status: true,
-                content: {
-                    notificationID: -1
+      });
+      return;
+    }
+    var notificationID = notiData.content[0][userTableConfig.primaryKeypushNotificationTable];
+    var osPlayerID = notiData.content[0][userTableConfig.playerIDKeyPushNotification];
+    var userID = notiData.content[0][userTableConfig.foreignKeyUserIDPushNotification];
+    var pushText = notiData.content[0][userTableConfig.playerIDKeyPushNotification];
+
+    if (!osPlayerID || osPlayerID == "" || osPlayerID == undefined || osPlayerID == 'undefined' || !notificationID || notificationID == "" || notificationID == undefined || notificationID == 'undefined' || !pushText || pushText == "" || pushText == undefined || pushText == 'undefined') {
+      var pushPKIDs = [];
+      pushPKIDs.push(notificationID);
+      updatePushNotificationStatus(pushSendFailed, pushPKIDs, userTableConfig, dbConfig, function() {
+        debug('Insufficient details for push');
+        cb({
+          status: true,
+          content: {
+            notificationID: -1
+          }
+        });
+        return;
+      });
+    } else {
+      getPushNotificationsByUserID(osPlayerID, userID, userTableConfig, dbConfig, function(playerNotifications) {
+        debug('osPush.getPushNotificationsByUserID d: %s', JSON.stringify(playerNotifications));
+
+        if (playerNotifications.status === false) {
+          debug(playerNotifications);
+          cb(playerNotifications);
+          return;
+        } else {
+          var pkOfPlayerIDsArray = playerNotifications.content.map(function(playerNotification) {
+            return playerNotification[userTableConfig.primaryKeypushNotificationTable];
+          });
+          debug('osPush.pkOfPlayerIDsArray d: %s', JSON.stringify(pkOfPlayerIDsArray));
+          var playerIDsArray = playerNotifications.content.map(function(playerNotification) {
+            return playerNotification[userTableConfig.playerIDKeyPushNotification];
+          });
+          debug('osPush.playerIDsArray d: %s', JSON.stringify(playerIDsArray));
+
+          updatePushNotificationStatus(pushInProcess, pkOfPlayerIDsArray, userTableConfig, dbConfig, function(ntStatusUpdate) {
+            if (ntStatusUpdate.status === false) {
+              debug(ntStatusUpdate);
+              cb(ntStatusUpdate);
+              return;
+            } else {
+
+              function processPush(d, userTableConfig, dbConfig, pushConfig, callback) {
+
+                debug('osPush.sendPush d: %s', JSON.stringify(d));
+                debug('osPush.sendPush userTableConfig: %s', JSON.stringify(userTableConfig));
+                debug('osPush.sendPush dbConfig: %s', JSON.stringify(dbConfig));
+                debug('osPush.sendPush pushConfig: %s', JSON.stringify(pushConfig));
+
+                var pushObject = utils.extend(true, {}, pushConfig);
+                debug('osPush.sendPush pushObject: %s', JSON.stringify(pushObject));
+
+                if (pkOfPlayerIDsArray.length > 1) {
+                  pushObject.body.url += "?screen=notification";
+                  pushObject.body.headings.en = "MonitorFirst";
+                  pushObject.body.contents.en = "You have " + pkOfPlayerIDsArray.length + " new notifications";
+                  pushObject.body.include_player_ids = playerIDsArray;
+                } else if (pkOfPlayerIDsArray.length == 1) {
+                  if (d[userTableConfig.targetKeyPushNotification] && d[userTableConfig.targetKeyPushNotification] !== "" && d[userTableConfig.targetKeyPushNotification] !== undefined && d[userTableConfig.targetKeyPushNotification] !== 'undefined' && d[userTableConfig.targetKeyPushNotification] !== null) {
+                    pushObject.body.url = d[userTableConfig.targetKeyPushNotification];
+                  }
+                  pushObject.body.headings.en = "MonitorFirst";
+                  pushObject.body.contents.en = d[userTableConfig.pushTextKeyPushNotification];
+                  pushObject.body.include_player_ids.push(d[userTableConfig.playerIDKeyPushNotification]);
                 }
-            });
-            return;
-        }
-        var notificationID = notiData.content[0][userTableConfig.primaryKeypushNotificationTable];
-        var osPlayerID = notiData.content[0][userTableConfig.playerIDKeyPushNotification];
-        var pushText = notiData.content[0][userTableConfig.playerIDKeyPushNotification];
-        if (!osPlayerID || osPlayerID == "" || osPlayerID == undefined || osPlayerID == 'undefined' || !notificationID || notificationID == "" || notificationID == undefined || notificationID == 'undefined' || !pushText || pushText == "" || pushText == undefined || pushText == 'undefined') {
-            updatePushNotificationStatus(pushSendFailed, notificationID, userTableConfig, dbConfig, function() {
-                debug('Insufficient details for push');
-                cb({
+
+                debug('osPush.sendPush pushObject: %s', JSON.stringify(pushObject));
+
+                osPush.sendPush(pushObject, function(response) {
+                  debug('osPush.sendPush response: %s', JSON.stringify(response));
+                  debug('response.body.id response: %s', JSON.stringify(response.body.id));
+                  debug('d[userTableConfig.playerIDKeyPushNotification] response: %s', JSON.stringify(d[userTableConfig.playerIDKeyPushNotification]));
+                  debug('response.body.recipients response: %s', JSON.stringify(response.body.recipients));
+
+                  if (response.body.id != "" && response.body.recipients > 0) {
+                    deletePushNotification(pkOfPlayerIDsArray, userTableConfig, dbConfig, function() {
+                      cb({
+                        status: true,
+                        content: {
+                          notificationID: response.body.id
+                        }
+                      });
+                      return;
+                    });
+                  } else {
+                    updatePushNotificationStatus(pushSendFailed, pkOfPlayerIDsArray, userTableConfig, dbConfig, function() {
+                      cb({
+                        status: true,
+                        content: {
+                          notificationID: notificationID
+                        }
+                      });
+                      return;
+                    });
+                  }
+                });
+              }
+
+              function processNotification(d, userTableConfig, dbConfig, pushConfig, callback) {
+                debug("d", d);
+                processPush(d, userTableConfig, dbConfig, pushConfig, function(pushResponse) {
+                  callback();
+                });
+              }
+
+              processNotificationArray(0, userTableConfig, dbConfig, pushConfig);
+
+              function processNotificationArray(index, userTableConfig, dbConfig, pushConfig) {
+                if (index >= notiData.content.length) {
+                  cb({
                     status: true,
                     content: {
-                        notificationID: -1
+                      notificationID: notificationID
                     }
-                });
-                return;
-            });
-        } else {
-            updatePushNotificationStatus(pushInProcess, notificationID, userTableConfig, dbConfig, function(ntStatusUpdate) {
-                if (ntStatusUpdate.status === false) {
-                    debug(ntStatusUpdate);
-                    cb(ntStatusUpdate);
-                    return;
-                } else {
-
-                    function processPush(d, userTableConfig, dbConfig, pushConfig, callback) {
-
-                        debug('osPush.sendPush d: %s', JSON.stringify(d));
-                        debug('osPush.sendPush userTableConfig: %s', JSON.stringify(userTableConfig));
-                        debug('osPush.sendPush dbConfig: %s', JSON.stringify(dbConfig));
-                        debug('osPush.sendPush pushConfig: %s', JSON.stringify(pushConfig));
-
-                        var pushObject = utils.extend(true,{},pushConfig);
-                        debug('osPush.sendPush pushObject: %s', JSON.stringify(pushObject));
-                        if (d[userTableConfig.targetKeyPushNotification] && d[userTableConfig.targetKeyPushNotification] !== "" && d[userTableConfig.targetKeyPushNotification] !== undefined && d[userTableConfig.targetKeyPushNotification] !== 'undefined' && d[userTableConfig.targetKeyPushNotification] !== null) {
-                            pushObject.body.url = d[userTableConfig.targetKeyPushNotification];
-                        }                        
-                        pushObject.body.headings.en = "MonitorFirst";
-                        pushObject.body.contents.en = d[userTableConfig.pushTextKeyPushNotification];
-                        pushObject.body.include_player_ids.push(d[userTableConfig.playerIDKeyPushNotification]);
-                        debug('osPush.sendPush pushObject: %s', JSON.stringify(pushObject));
-
-                        osPush.sendPush(pushObject, function(response) {
-                            debug('osPush.sendPush response: %s', JSON.stringify(response));
-                            debug('response.body.id response: %s', JSON.stringify(response.body.id));
-                            debug('d[userTableConfig.playerIDKeyPushNotification] response: %s', JSON.stringify(d[userTableConfig.playerIDKeyPushNotification]));
-                            debug('response.body.recipients response: %s', JSON.stringify(response.body.recipients));
-
-                            if (response.body.id != "" && response.body.recipients > 0) {
-                                deletePushNotification(notificationID, userTableConfig, dbConfig, function() {
-                                    cb({
-                                        status: true,
-                                        content: {
-                                            notificationID: response.body.id
-                                        }
-                                    });
-                                    return;
-                                });
-                            } else {
-                                updatePushNotificationStatus(pushSendFailed, notificationID, userTableConfig, dbConfig, function() {
-                                    cb({
-                                        status: true,
-                                        content: {
-                                            notificationID: notificationID
-                                        }
-                                    });
-                                    return;
-                                });
-                            }
-                        });
-                    }
-
-                    function processNotification(d, userTableConfig, dbConfig, pushConfig, callback) {
-                        debug("d", d);
-                        processPush(d, userTableConfig, dbConfig, pushConfig, function(pushResponse) {
-                            callback();
-                        });
-                    }
-
-                    processNotificationArray(0, userTableConfig, dbConfig, pushConfig);
-
-                    function processNotificationArray(index, userTableConfig, dbConfig, pushConfig) {
-                        if (index >= notiData.content.length) {
-                            cb({
-                                status: true,
-                                content: {
-                                    notificationID: notificationID
-                                }
-                            });
-                            return;
-                        }
-                        processNotification(notiData.content[index], userTableConfig, dbConfig, pushConfig, function() {
-                            processNotificationArray(index + 1, userTableConfig, dbConfig, pushConfig);
-                        });
-                    }
-
+                  });
+                  return;
                 }
+                processNotification(notiData.content[index], userTableConfig, dbConfig, pushConfig, function() {
+                  processNotificationArray(index + 1, userTableConfig, dbConfig, pushConfig);
+                });
+              }
 
-            });
+            }
+
+          });
+
         }
 
-    });
+      });
+
+    }
+
+  });
 }
 
 /*
     Gets push notification one by one which are not processed
 */
 function getPushNotifications(userTableConfig, dbConfig, cb) {
-    var notificationJson = {
-        table: userTableConfig.pushNotificationTableName,
-        alias: userTableConfig.pushNotificationTableAlias,
-        select: [],
-        limit: 1,
-        filter: {
-            AND: [{
-                field: userTableConfig.statusKeyPushNotification,
-                operator: 'EQ',
-                value: '-1'
-            }]
-        }
-    };
-    var requestData = {
-        query: notificationJson,
-        dbConfig: dbConfig
-    };
-    queryExecutor.executeQuery(requestData, function(data) {
-        cb(data);
-    });
+  var notificationJson = {
+    table: userTableConfig.pushNotificationTableName,
+    alias: userTableConfig.pushNotificationTableAlias,
+    select: [],
+    limit: 1,
+    filter: {
+      AND: [{
+        field: userTableConfig.statusKeyPushNotification,
+        operator: 'EQ',
+        value: '-1'
+      }]
+    }
+  };
+  var requestData = {
+    query: notificationJson,
+    dbConfig: dbConfig
+  };
+  queryExecutor.executeQuery(requestData, function(data) {
+    cb(data);
+  });
+}
+
+/*
+    Gets push notifications by playerID
+*/
+function getPushNotificationsByUserID(osPlayerID, userID, userTableConfig, dbConfig, cb) {
+  var notificationJson = {
+    table: userTableConfig.pushNotificationTableName,
+    alias: userTableConfig.pushNotificationTableAlias,
+    select: [],
+    filter: {
+      AND: [{
+        field: userTableConfig.statusKeyPushNotification,
+        operator: 'EQ',
+        value: '-1'
+      }, {
+        field: userTableConfig.foreignKeyUserIDPushNotification,
+        operator: 'EQ',
+        value: '' + userID + ''
+      }, {
+        field: userTableConfig.playerIDKeyPushNotification,
+        operator: 'EQ',
+        value: '' + osPlayerID + ''
+      }]
+    }
+  };
+  var requestData = {
+    query: notificationJson,
+    dbConfig: dbConfig
+  };
+  queryExecutor.executeQuery(requestData, function(data) {
+    cb(data);
+  });
 }
 
 /*
     Updates push notification status
 */
-function updatePushNotificationStatus(processStatus, pkId, userTableConfig, dbConfig, cb) {
-    var udpateStatus = {
-        table: userTableConfig.pushNotificationTableName,
-        update: [{
-            field: userTableConfig.statusKeyPushNotification,
-            fValue: '' + processStatus + ''
-        }],
-        filter: {
-            AND: [{
-                field: userTableConfig.primaryKeypushNotificationTable,
-                operator: 'EQ',
-                value: '' + pkId + ''
-            }]
-        }
-    };
-    var updateRequestData = {
-        query: udpateStatus,
-        dbConfig: dbConfig
-    };
-    queryExecutor.executeQuery(updateRequestData, function(data) {
-        cb(data);
-    });
+function updatePushNotificationStatus(processStatus, pkIds, userTableConfig, dbConfig, cb) {
+  var udpateStatus = {
+    table: userTableConfig.pushNotificationTableName,
+    update: [{
+      field: userTableConfig.statusKeyPushNotification,
+      fValue: '' + processStatus + ''
+    }],
+    filter: {
+      AND: [{
+        field: userTableConfig.primaryKeypushNotificationTable,
+        operator: 'EQ',
+        value: pkIds
+      }]
+    }
+  };
+  var updateRequestData = {
+    query: udpateStatus,
+    dbConfig: dbConfig
+  };
+  queryExecutor.executeQuery(updateRequestData, function(data) {
+    cb(data);
+  });
 }
 
 /*
     Deletes push notification
 */
-function deletePushNotification(pkId, userTableConfig, dbConfig, cb) {
-    var notificationJson = {
-        table: userTableConfig.pushNotificationTableName,
-        delete: [],
-        filter: {
-            AND: [{
-                field: userTableConfig.primaryKeypushNotificationTable,
-                operator: 'EQ',
-                value: '' + pkId + ''
-            }]
-        }
-    };
-    var updateRequestData = {
-        query: notificationJson,
-        dbConfig: dbConfig
-    };
-    queryExecutor.executeQuery(updateRequestData, function(data) {
-        cb(data);
-    });
+function deletePushNotification(pkIds, userTableConfig, dbConfig, cb) {
+  var notificationJson = {
+    table: userTableConfig.pushNotificationTableName,
+    delete: [],
+    filter: {
+      AND: [{
+        field: userTableConfig.primaryKeypushNotificationTable,
+        operator: 'EQ',
+        value: pkIds
+      }]
+    }
+  };
+  var updateRequestData = {
+    query: notificationJson,
+    dbConfig: dbConfig
+  };
+  queryExecutor.executeQuery(updateRequestData, function(data) {
+    cb(data);
+  });
 }
 
 /*
     Resets status for mail notifications, sets to not processed for the ones in process (to 0 from -1)
 */
 function resetMailNotificationStatus(userTableConfig, dbConfig, cb) {
-    var udpateStatus = {
-        table: userTableConfig.mailNotificationTableName,
-        update: [{
-            field: userTableConfig.statusKeyMailNotification,
-            fValue: '' + mailNotProcessed + ''
-        }],
-        filter: {
-            AND: [{
-                field: userTableConfig.statusKeyMailNotification,
-                operator: 'EQ',
-                value: '' + mailInProcess + ''
-            }]
-        }
-    };
-    var updateRequestData = {
-        query: udpateStatus,
-        dbConfig: dbConfig
-    };
-    queryExecutor.executeQuery(updateRequestData, function(data) {
-        cb(data);
-    });
+  var udpateStatus = {
+    table: userTableConfig.mailNotificationTableName,
+    update: [{
+      field: userTableConfig.statusKeyMailNotification,
+      fValue: '' + mailNotProcessed + ''
+    }],
+    filter: {
+      AND: [{
+        field: userTableConfig.statusKeyMailNotification,
+        operator: 'EQ',
+        value: '' + mailInProcess + ''
+      }]
+    }
+  };
+  var updateRequestData = {
+    query: udpateStatus,
+    dbConfig: dbConfig
+  };
+  queryExecutor.executeQuery(updateRequestData, function(data) {
+    cb(data);
+  });
 }
 
 /*
     Process for sending mail notifications one by one using gmail service
 */
 function sendMailNotifications(userTableConfig, dbConfig, mailConfig, cb) {
-    getMailNotifications(userTableConfig, dbConfig, function(notiData) {
-        if (notiData.status === false) {
-            debug(notiData);
-            cb(notiData);
-            return;
+  getMailNotifications(userTableConfig, dbConfig, function(notiData) {
+    if (notiData.status === false) {
+      debug(notiData);
+      cb(notiData);
+      return;
+    }
+    if (notiData.content.length <= 0) {
+      debug('Mail notification data not available.');
+      cb({
+        status: true,
+        content: {
+          notificationID: -1
         }
-        if (notiData.content.length <= 0) {
-            debug('Notification data not available.');
-            cb({
-                status: true,
-                content: {
-                    notificationID: -1
-                }
-            });
-            return;
-        }
-        var notificationID = notiData.content[0][userTableConfig.primaryKeyMailNotificationTable];
-        var mailFrom = notiData.content[0][userTableConfig.mailFromKeyMailNotification];
-        var mailTo = notiData.content[0][userTableConfig.mailToKeyMailNotification];
-        var mailSubject = notiData.content[0][userTableConfig.mailSubjectKeyMailNotification];
-        var mailHtml = notiData.content[0][userTableConfig.mailHTMLKeyMailNotification];
+      });
+      return;
+    }
+    var notificationID = notiData.content[0][userTableConfig.primaryKeyMailNotificationTable];
+    var mailFrom = notiData.content[0][userTableConfig.mailFromKeyMailNotification];
+    var mailTo = notiData.content[0][userTableConfig.mailToKeyMailNotification];
+    var mailSubject = notiData.content[0][userTableConfig.mailSubjectKeyMailNotification];
+    var mailHtml = notiData.content[0][userTableConfig.mailHTMLKeyMailNotification];
 
-        if (!mailTo || mailTo == "" || mailTo == undefined || mailTo == 'undefined' || !notificationID || notificationID == "" || notificationID == undefined || notificationID == 'undefined' || !mailHtml || mailHtml == "" || mailHtml == undefined || mailHtml == 'undefined' || !mailFrom || mailFrom == "" || mailFrom == undefined || mailFrom == 'undefined' || !mailSubject || mailSubject == "" || mailSubject == undefined || mailSubject == 'undefined') {
-            updateMailNotificationStatus(pushSendFailed, notificationID, userTableConfig, dbConfig, function() {
-                debug('Insufficient details for mail');
-                cb({
+    if (!mailTo || mailTo == "" || mailTo == undefined || mailTo == 'undefined' || !notificationID || notificationID == "" || notificationID == undefined || notificationID == 'undefined' || !mailHtml || mailHtml == "" || mailHtml == undefined || mailHtml == 'undefined' || !mailFrom || mailFrom == "" || mailFrom == undefined || mailFrom == 'undefined' || !mailSubject || mailSubject == "" || mailSubject == undefined || mailSubject == 'undefined') {
+      updateMailNotificationStatus(pushSendFailed, notificationID, userTableConfig, dbConfig, function() {
+        debug('Insufficient details for mail');
+        cb({
+          status: true,
+          content: {
+            notificationID: -1
+          }
+        });
+        return;
+      });
+    } else {
+      getMailNotificationsByEmailID(mailTo, userTableConfig, dbConfig, function(emailNotifications) {
+        debug('mailService.getMailNotificationsByEmailID d: %s', JSON.stringify(emailNotifications));
+
+        if (emailNotifications.status === false) {
+          debug(emailNotifications);
+          cb(emailNotifications);
+          return;
+        } else {
+          var pkOfEmailIDsArray = emailNotifications.content.map(function(emailNotification) {
+            return emailNotification[userTableConfig.primaryKeyMailNotificationTable];
+          });
+          var emailIDsArray = emailNotifications.content.map(function(emailNotification) {
+            return emailNotification[userTableConfig.mailToKeyMailNotification];
+          });
+
+          updateMailNotificationStatus(mailInProcess, pkOfEmailIDsArray, userTableConfig, dbConfig, function(ntStatusUpdate) {
+            if (ntStatusUpdate.status === false) {
+              debug(ntStatusUpdate);
+              cb(ntStatusUpdate);
+              return;
+            } else {
+
+              function processMail(d, userTableConfig, dbConfig, mailConfig, callback) {
+
+                debug('mailService.sendMail d: %s', JSON.stringify(d));
+                debug('mailService.sendMail userTableConfig: %s', JSON.stringify(userTableConfig));
+                debug('mailService.sendMail dbConfig: %s', JSON.stringify(dbConfig));
+                debug('mailService.sendMail mailConfig: %s', JSON.stringify(mailConfig));
+
+                var mailObject = utils.extend(true, {}, mailConfig);
+                debug('mailService.sendMail mailObject: %s', JSON.stringify(mailObject));
+                var mailParams = {};1
+                if (pkOfEmailIDsArray.length > 1) {
+                  mailParams.toAddress = d[userTableConfig.mailToKeyMailNotification];
+                  mailParams.subject = "New notifications generated at MonitorFirst";
+                  mailParams.htmlData = 'You have ' + pkOfEmailIDsArray.length + ' new notifications.<br /><br />';
+                  emailNotifications.content.forEach(function(emailNotificationRow) {
+                    mailParams.htmlData += emailNotificationRow[userTableConfig.mailSubjectKeyMailNotification]+'<br />';
+                  });
+                  mailParams.htmlData += '<br />To view all notifications, please click on the link below : <a href="'+userTableConfig.serverBaseURL+'?screen=notification">View on MonitorFirst</a><br /><br />';
+                  mailParams.htmlData += 'Sincerely,<br />';
+                  mailParams.htmlData += 'The Monitor System Admin<br /><br />';
+                  mailParams.htmlData += 'Powered by<br />';
+                  mailParams.htmlData += '<a href="https://apps.byteprophecy.com/apps/MonitorFirst" style="text-decoration:none;"><img src="https://apps.byteprophecy.com/apps/MonitorFirst/img/monitor_logo.png"><font style="color:#d77c67;">first</font></a>';
+                } else if (pkOfEmailIDsArray.length == 1) {
+                  mailParams.toAddress = d[userTableConfig.mailToKeyMailNotification];
+                  mailParams.subject = d[userTableConfig.mailSubjectKeyMailNotification];
+                  mailParams.htmlData = d[userTableConfig.mailHTMLKeyMailNotification];
+                }
+                debug('mailService.sendMail mailObject: %s', JSON.stringify(mailObject));
+                mailService.sendMail(mailParams.toAddress, mailParams.subject, null, mailParams.htmlData, mailObject, function(response) {
+                  debug('=====mailService.sendMail response: %s', JSON.stringify(response));
+                  if (response.status == true) {
+                    deleteMailNotification(pkOfEmailIDsArray, userTableConfig, dbConfig, function() {
+                      cb({
+                        status: true,
+                        content: {
+                          notificationID: response.data.messageId
+                        }
+                      });
+                      return;
+                    });
+                  } else {
+                    updateMailNotificationStatus(pushSendFailed, pkOfEmailIDsArray, userTableConfig, dbConfig, function() {
+                      cb({
+                        status: true,
+                        content: {
+                          notificationID: pkOfEmailIDsArray
+                        }
+                      });
+                      return;
+                    });
+                  }
+                });
+              }
+
+              function processNotification(d, userTableConfig, dbConfig, mailConfig, callback) {
+                debug("d", d);
+                processMail(d, userTableConfig, dbConfig, mailConfig, function(pushResponse) {
+                  callback();
+                });
+              }
+
+              processNotificationArray(0, userTableConfig, dbConfig, mailConfig);
+
+              function processNotificationArray(index, userTableConfig, dbConfig, mailConfig) {
+                if (index >= notiData.content.length) {
+                  cb({
                     status: true,
                     content: {
-                        notificationID: -1
+                      notificationID: notificationID
                     }
-                });
-                return;
-            });
-        } else {
-            updateMailNotificationStatus(mailInProcess, notificationID, userTableConfig, dbConfig, function(ntStatusUpdate) {
-                if (ntStatusUpdate.status === false) {
-                    debug(ntStatusUpdate);
-                    cb(ntStatusUpdate);
-                    return;
-                } else {
-
-                    function processMail(d, userTableConfig, dbConfig, mailConfig, callback) {
-
-                        debug('mailService.sendMail d: %s', JSON.stringify(d));
-                        debug('mailService.sendMail userTableConfig: %s', JSON.stringify(userTableConfig));
-                        debug('mailService.sendMail dbConfig: %s', JSON.stringify(dbConfig));
-                        debug('mailService.sendMail mailConfig: %s', JSON.stringify(mailConfig));
-
-                        var mailObject = utils.extend(true,{},mailConfig);
-                        debug('mailService.sendMail mailObject: %s', JSON.stringify(mailObject));
-                        var mailParams = {};
-                        mailParams.toAddress = d[userTableConfig.mailToKeyMailNotification];
-                        mailParams.subject = d[userTableConfig.mailSubjectKeyMailNotification]; 
-                        mailParams.htmlData = d[userTableConfig.mailHTMLKeyMailNotification]; 
-                        debug('mailService.sendMail mailObject: %s', JSON.stringify(mailObject));
-                        mailService.sendMail(mailParams.toAddress, mailParams.subject, null, mailParams.htmlData, mailObject, function(response) {
-                            debug('mailService.sendMail response: %s', JSON.stringify(response));
-                            if (response.status == true) {
-                                deleteMailNotification(notificationID, userTableConfig, dbConfig, function() {
-                                    cb({
-                                        status: true,
-                                        content: {
-                                            notificationID: response.data.messageId
-                                        }
-                                    });
-                                    return;
-                                });
-                            } else {
-                                updateMailNotificationStatus(pushSendFailed, notificationID, userTableConfig, dbConfig, function() {
-                                    cb({
-                                        status: true,
-                                        content: {
-                                            notificationID: notificationID
-                                        }
-                                    });
-                                    return;
-                                });
-                            }
-                        });
-                    }
-
-                    function processNotification(d, userTableConfig, dbConfig, mailConfig, callback) {
-                        debug("d", d);
-                        processMail(d, userTableConfig, dbConfig, mailConfig, function(pushResponse) {
-                            callback();
-                        });
-                    }
-
-                    processNotificationArray(0, userTableConfig, dbConfig, mailConfig);
-
-                    function processNotificationArray(index, userTableConfig, dbConfig, mailConfig) {
-                        if (index >= notiData.content.length) {
-                            cb({
-                                status: true,
-                                content: {
-                                    notificationID: notificationID
-                                }
-                            });
-                            return;
-                        }
-                        processNotification(notiData.content[index], userTableConfig, dbConfig, mailConfig, function() {
-                            processNotificationArray(index + 1, userTableConfig, dbConfig, mailConfig);
-                        });
-                    }
-
+                  });
+                  return;
                 }
+                processNotification(notiData.content[index], userTableConfig, dbConfig, mailConfig, function() {
+                  processNotificationArray(index + 1, userTableConfig, dbConfig, mailConfig);
+                });
+              }
 
-            });
+            }
+
+          });
+
         }
 
-    });
+      });
+    }
+
+  });
 }
 
 /*
     Gets mail notification one by one which are not processed
 */
 function getMailNotifications(userTableConfig, dbConfig, cb) {
-    var notificationJson = {
-        table: userTableConfig.mailNotificationTableName,
-        alias: userTableConfig.mailNotificationTableAlias,
-        select: [],
-        limit: 1,
-        filter: {
-            AND: [{
-                field: userTableConfig.statusKeyMailNotification,
-                operator: 'EQ',
-                value: '-1'
-            }]
-        }
-    };
-    var requestData = {
-        query: notificationJson,
-        dbConfig: dbConfig
-    };
-    queryExecutor.executeQuery(requestData, function(data) {
-        cb(data);
-    });
+  var notificationJson = {
+    table: userTableConfig.mailNotificationTableName,
+    alias: userTableConfig.mailNotificationTableAlias,
+    select: [],
+    limit: 1,
+    filter: {
+      AND: [{
+        field: userTableConfig.statusKeyMailNotification,
+        operator: 'EQ',
+        value: '-1'
+      }]
+    }
+  };
+  var requestData = {
+    query: notificationJson,
+    dbConfig: dbConfig
+  };
+  queryExecutor.executeQuery(requestData, function(data) {
+    cb(data);
+  });
+}
+
+/*
+    Gets push notifications by emailID
+*/
+function getMailNotificationsByEmailID(emailID, userTableConfig, dbConfig, cb) {
+  var notificationJson = {
+    table: userTableConfig.mailNotificationTableName,
+    alias: userTableConfig.mailNotificationTableAlias,
+    select: [],
+    filter: {
+      AND: [{
+        field: userTableConfig.statusKeyMailNotification,
+        operator: 'EQ',
+        value: '-1'
+      }, {
+        field: userTableConfig.mailToKeyMailNotification,
+        operator: 'EQ',
+        value: '' + emailID + ''
+      }]
+    }
+  };
+  var requestData = {
+    query: notificationJson,
+    dbConfig: dbConfig
+  };
+  queryExecutor.executeQuery(requestData, function(data) {
+    cb(data);
+  });
 }
 
 /*
     Updates mail notification status
 */
-function updateMailNotificationStatus(processStatus, pkId, userTableConfig, dbConfig, cb) {
-    var udpateStatus = {
-        table: userTableConfig.mailNotificationTableName,
-        update: [{
-            field: userTableConfig.statusKeyMailNotification,
-            fValue: '' + processStatus + ''
-        }],
-        filter: {
-            AND: [{
-                field: userTableConfig.primaryKeyMailNotificationTable,
-                operator: 'EQ',
-                value: '' + pkId + ''
-            }]
-        }
-    };
-    var updateRequestData = {
-        query: udpateStatus,
-        dbConfig: dbConfig
-    };
-    queryExecutor.executeQuery(updateRequestData, function(data) {
-        cb(data);
-    });
+function updateMailNotificationStatus(processStatus, pkIds, userTableConfig, dbConfig, cb) {
+  var udpateStatus = {
+    table: userTableConfig.mailNotificationTableName,
+    update: [{
+      field: userTableConfig.statusKeyMailNotification,
+      fValue: '' + processStatus + ''
+    }],
+    filter: {
+      AND: [{
+        field: userTableConfig.primaryKeyMailNotificationTable,
+        operator: 'EQ',
+        value: pkIds
+      }]
+    }
+  };
+  var updateRequestData = {
+    query: udpateStatus,
+    dbConfig: dbConfig
+  };
+  queryExecutor.executeQuery(updateRequestData, function(data) {
+    cb(data);
+  });
 }
 
 /*
     Deletes mail notification
 */
-function deleteMailNotification(pkId, userTableConfig, dbConfig, cb) {
-    var notificationJson = {
-        table: userTableConfig.mailNotificationTableName,
-        delete: [],
-        filter: {
-            AND: [{
-                field: userTableConfig.primaryKeyMailNotificationTable,
-                operator: 'EQ',
-                value: '' + pkId + ''
-            }]
-        }
-    };
-    var updateRequestData = {
-        query: notificationJson,
-        dbConfig: dbConfig
-    };
-    queryExecutor.executeQuery(updateRequestData, function(data) {
-        cb(data);
-    });
+function deleteMailNotification(pkIds, userTableConfig, dbConfig, cb) {
+  var notificationJson = {
+    table: userTableConfig.mailNotificationTableName,
+    delete: [],
+    filter: {
+      AND: [{
+        field: userTableConfig.primaryKeyMailNotificationTable,
+        operator: 'EQ',
+        value: pkIds
+      }]
+    }
+  };
+  var updateRequestData = {
+    query: notificationJson,
+    dbConfig: dbConfig
+  };
+  queryExecutor.executeQuery(updateRequestData, function(data) {
+    cb(data);
+  });
 }
 
 module.exports = {
-    sendPushNotifications: sendPushNotifications,
-    sendMailNotifications: sendMailNotifications,
-    resetPushNotificationStatus: resetPushNotificationStatus,
-    resetMailNotificationStatus: resetMailNotificationStatus,
-    // updateNotificationStatus: updateNotificationStatus,
-    // insertInappNotification: insertInappNotification,
-    // sendMail: sendMail.sendMail,
-    // mailConfig: sendMail.mailConfig,
-    // sendSMS: sendSMS.sendSMS,
-    // smsConfig: sendSMS.smsConfig
+  sendPushNotifications: sendPushNotifications,
+  sendMailNotifications: sendMailNotifications,
+  resetPushNotificationStatus: resetPushNotificationStatus,
+  resetMailNotificationStatus: resetMailNotificationStatus,
+
+  // updateNotificationStatus: updateNotificationStatus,
+  // insertInappNotification: insertInappNotification,
+  // sendMail: sendMail.sendMail,
+  // mailConfig: sendMail.mailConfig,
+  // sendSMS: sendSMS.sendSMS,
+  // smsConfig: sendSMS.smsConfig
 }
