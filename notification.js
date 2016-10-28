@@ -338,6 +338,7 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                     });
                                                     return;
                                                 });
+                                                return;
                                             }
 
                                             var processedUserData = [];
