@@ -272,6 +272,10 @@ function getNotificationTransactionByID(id, dbConfig, cb) {
 */
 function insertNotificationTransactions(transactionData, userTableConfig, dbConfig, cb) {
     if (transactionData[0].userIds && transactionData[0].userIds != null && transactionData[0].userIds != "") {
+        var userAlertSettingsData = JSON.parse(transactionData[0].userIds);
+         transactionData[0].userIds = JSON.parse(transactionData[0].userIds).map(function(item){
+            return item.email;
+         }).join();
         debug('userIds present: %s', JSON.stringify(transactionData));
         prepareTransactionData(transactionData, dbConfig, function(preparedTransactionsData) {
             if (preparedTransactionsData.status == true) {
@@ -338,6 +342,7 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                     });
                                                     return;
                                                 });
+                                                return;
                                             }
 
                                             var processedUserData = [];
@@ -372,10 +377,9 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
 
                                             debug('processedUserData array: %s', JSON.stringify(processedUserData));
 
-                                            function processInapp(d, userTableConfig, dbConfig, callback) {
+                                            function processInapp(d, userTableConfig, dbConfig,alertAdditonalInfo, callback) {
                                                 var inappTemplateToProcess = inappTemplate;
-
-                                                if (inappTemplateToProcess === undefined || inappTemplateToProcess === null || inappTemplateToProcess.trim().length === 0) {
+                                                if (inappTemplateToProcess === undefined || inappTemplateToProcess === null ||  !alertAdditonalInfo.isInapp || inappTemplateToProcess.trim().length === 0) {
                                                     debug('inapp notification skipped...');
                                                     callback();
                                                     return;
@@ -396,12 +400,12 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                 });
                                             }
 
-                                            function processPush(d, userTableConfig, dbConfig, callback) {
+                                            function processPush(d, userTableConfig, dbConfig, alertAdditonalInfo,callback) {
                                                 var pushTemplateToProcess = pushTemplate;
 
                                                 debug('d: %s', JSON.stringify(d));
 
-                                                if (pushTemplateToProcess === undefined || pushTemplateToProcess === null || pushTemplateToProcess.trim().length === 0) {
+                                                if (pushTemplateToProcess === undefined || pushTemplateToProcess === null || !alertAdditonalInfo.isPush || pushTemplateToProcess.trim().length === 0) {
                                                     debug('push notification skipped...');
                                                     callback();
                                                     return;
@@ -440,11 +444,11 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                 }
                                             }
 
-                                            function processEmail(d, userTableConfig, dbConfig, callback) {
+                                            function processEmail(d, userTableConfig, dbConfig,alertAdditonalInfo, callback) {
                                                 var emailTemplateToProcess = emailTemplate;
                                                 var emailSubjectToProcess = emailSubject;
 
-                                                if (emailTemplateToProcess === undefined || emailTemplateToProcess === null || emailTemplateToProcess.trim().length === 0) {
+                                                if (emailTemplateToProcess === undefined || emailTemplateToProcess === null || !alertAdditonalInfo.isEmail  || emailTemplateToProcess.trim().length === 0) {
                                                     debug('email notification skipped...');
                                                     callback();
                                                     return;
@@ -466,11 +470,13 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                 });
                                             }
 
-                                            function processNotification(d, userTableConfig, dbConfig, callback) {
-                                                debug("email", d["email"])
-                                                processInapp(d, userTableConfig, dbConfig, function(inappResponse) {
-                                                    processPush(d, userTableConfig, dbConfig, function(pushResponse) {
-                                                        processEmail(d, userTableConfig, dbConfig, function(emailResponse) {
+                                            function processNotificationFunction(d, userTableConfig, dbConfig, callback) {
+                                                var userData = userAlertSettingsData.find(function(userInfo){
+                                                    return d.pk_UserID == userInfo.UserId;
+                                                });
+                                                processInapp(d, userTableConfig, dbConfig,userData.AlertAdditonalInfo, function(inappResponse) {
+                                                    processPush(d, userTableConfig, dbConfig,userData.AlertAdditonalInfo, function(pushResponse) {
+                                                        processEmail(d, userTableConfig, dbConfig, userData.AlertAdditonalInfo,function(emailResponse) {
                                                             //processSMS(d, function(smsResponse) {
                                                             callback();
                                                             return;
@@ -497,7 +503,7 @@ function insertNotificationTransactions(transactionData, userTableConfig, dbConf
                                                     });
                                                     return;
                                                 }
-                                                processNotification(processedUserData[index], userTableConfig, dbConfig, function() {
+                                                processNotificationFunction(processedUserData[index], userTableConfig, dbConfig, function() {
                                                     debug('processedUserData.length 0: ', processedUserData.length);
                                                     debug('index 0: ', index);
                                                     processUser(index + 1, userTableConfig, dbConfig);
@@ -766,6 +772,7 @@ function getUserDetails(userArray, userTableConfig, dbConfig, cb) {
             table: userTableConfig.userTableName,
             alias: userTableConfig.userTableAlias,
             joinwith: [{
+                type: 'LEFT',
                 table: userTableConfig.userMappingTableName,
                 alias: userTableConfig.userMappingTableAlias,
                 joincondition: {
@@ -934,3 +941,4 @@ module.exports = {
     // sendSMS: processNotification.sendSMS,
     // smsConfig: processNotification.smsConfig
 }
+
